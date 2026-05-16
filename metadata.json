@@ -1,0 +1,6 @@
+{
+  "name": "Gestão de Pagamentos - Obra",
+  "description": "Sistema intuitivo para controle de frequência e cálculo de pagamentos semanais para pedreiros e ajudantes, com suporte a recibos gerados por IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
