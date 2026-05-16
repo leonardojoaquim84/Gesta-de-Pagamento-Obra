@@ -449,30 +449,53 @@ const App: React.FC = () => {
                     <div className="space-y-4">
                       {selectedPayment?.workers.map(worker => {
                         const days = Object.values(worker.attendance).filter(Boolean).length;
-                        if (days === 0) return null;
+                        const baseAmount = days * worker.dailyRate;
+                        const advanceAmount = (worker.hasAdvance && worker.advanceDays) ? worker.advanceDays * worker.dailyRate : 0;
+                        const deductionAmount = (worker.hasDeduction && worker.deductionDays) ? worker.deductionDays * worker.dailyRate : 0;
+                        const subtotal = baseAmount + advanceAmount - deductionAmount;
+
+                        if (days === 0 && advanceAmount === 0 && deductionAmount === 0) return null;
+
                         return (
                           <div key={worker.id} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                            <div className="flex justify-between items-center mb-2">
-                              <div className="flex items-baseline gap-2">
-                                <span className="font-black text-xs text-slate-700 uppercase">{worker.name}</span>
-                                <span className="text-[10px] text-slate-400 font-bold uppercase"> 
-                                  {days}D 
-                                  {worker.hasAdvance && worker.advanceDays ? ` + ${worker.advanceDays}A` : ''} 
-                                  {worker.hasDeduction && worker.deductionDays ? ` - ${worker.deductionDays}D` : ''} 
-                                  x {worker.dailyRate}
-                                </span>
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h4 className="font-black text-slate-800 uppercase text-xs">{worker.name}</h4>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">{worker.role} • Diária: R$ {worker.dailyRate.toFixed(2)}</p>
                               </div>
-                              <span className="text-sm font-black text-slate-900">
-                                R$ {calculateWorkerTotal(worker).toFixed(2).replace('.', ',')}
-                              </span>
+                              <div className="text-right">
+                                <span className="text-lg font-black text-slate-900 italic">R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                              </div>
                             </div>
+
+                            <div className="space-y-1.5 mb-4 border-t border-slate-200/50 pt-3">
+                              <div className="flex justify-between text-[11px] font-bold text-slate-600">
+                                <span className="uppercase tracking-tight">{days} dias trabalhados</span>
+                                <span>R$ {baseAmount.toFixed(2).replace('.', ',')}</span>
+                              </div>
+                              
+                              {advanceAmount > 0 && (
+                                <div className="flex justify-between text-[11px] font-bold text-green-600 bg-green-50/50 px-2 py-1 rounded">
+                                  <span className="uppercase tracking-tight">(+) Adiantamento ({worker.advanceDays}d)</span>
+                                  <span>R$ {advanceAmount.toFixed(2).replace('.', ',')}</span>
+                                </div>
+                              )}
+
+                              {deductionAmount > 0 && (
+                                <div className="flex justify-between text-[11px] font-bold text-red-600 bg-red-50/50 px-2 py-1 rounded">
+                                  <span className="uppercase tracking-tight">(-) Desc. Adiantamento ({worker.deductionDays}d)</span>
+                                  <span>R$ {deductionAmount.toFixed(2).replace('.', ',')}</span>
+                                </div>
+                              )}
+                            </div>
+
                             <div className="flex gap-1 overflow-x-auto pb-1">
                               {DAYS_OF_WEEK.map(day => (
                                 <div key={day.key} className={`text-[8px] px-2 py-1 rounded font-bold uppercase whitespace-nowrap ${
                                   worker.attendance[day.key as keyof Attendance] 
-                                    ? 'bg-yellow-400 text-white' 
+                                    ? 'bg-yellow-400 text-white shadow-sm' 
                                     : day.key === 'saturday'
-                                      ? 'bg-slate-200 text-slate-500'
+                                      ? 'bg-slate-200 text-slate-400 opacity-50'
                                       : 'bg-white text-slate-200 border border-slate-100'
                                 }`}>
                                   {day.label}
