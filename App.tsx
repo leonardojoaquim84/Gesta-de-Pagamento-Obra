@@ -16,6 +16,7 @@ import {
   Copy,
   Plus,
   Minus,
+  Download,
   AlertCircle
 } from 'lucide-react';
 
@@ -149,7 +150,7 @@ const App: React.FC = () => {
   const handleClearAllHistory = () => {
     if (window.confirm("Deseja apagar TODO o histórico de pagamentos? Esta ação não pode ser desfeita.")) {
       setHistory([]);
-      localStorage.removeItem('payment_history');
+      setSelectedHistoryId(null);
     }
   };
 
@@ -177,15 +178,27 @@ const App: React.FC = () => {
         }
       }
 
+      // 3. Download the image (for "Salvar")
+      if (imageBlob) {
+        const url = URL.createObjectURL(imageBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `demonstrativo_${payment.startDate.replace(/\//g, '-')}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
       const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
 
-      // 3. Tentar compartilhar imagem + texto via API nativa (funciona melhor em Mobile)
+      // 4. Tentar compartilhar imagem + texto via API nativa (funciona melhor em Mobile)
       if (navigator.share && imageBlob) {
         const file = new File([imageBlob], `recibo_${payment.startDate.replace(/\//g, '-')}.png`, { type: 'image/png' });
         try {
           if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
-              title: 'Recibo de Obra',
+              title: 'Demonstrativo de Obra',
               text: text,
               files: [file]
             });
@@ -197,7 +210,7 @@ const App: React.FC = () => {
         }
       }
 
-      // 4. Fallback: Copiar imagem para o clipboard e abrir WhatsApp com o texto
+      // 5. Fallback: Copiar imagem para o clipboard e abrir WhatsApp com o texto
       if (imageBlob && navigator.clipboard && navigator.clipboard.write) {
         try {
           const data = [new ClipboardItem({ 'image/png': imageBlob })];
@@ -389,8 +402,12 @@ const App: React.FC = () => {
                   <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest">Histórico de Pagamentos</h3>
                   {history.length > 0 && (
                     <button 
-                      onClick={handleClearAllHistory}
-                      className="text-red-500 text-[10px] font-black uppercase flex items-center gap-1 hover:text-red-700 transition-colors"
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleClearAllHistory();
+                      }}
+                      className="text-red-500 text-[10px] font-black uppercase flex items-center gap-1 hover:text-red-700 transition-colors py-2 px-3 bg-red-50/50 rounded-lg border border-red-100"
                     >
                       <Trash2 className="w-3 h-3" /> Limpar Tudo
                     </button>
@@ -521,8 +538,8 @@ const App: React.FC = () => {
                         </div>
                       ) : (
                         <>
-                          <MessageSquare className="w-5 h-5" />
-                          ENVIAR WHATSAPP
+                          <Download className="w-5 h-5" />
+                          SALVAR DEMONSTRATIVO
                         </>
                       )}
                     </button>
