@@ -8,13 +8,17 @@ export const generateReceiptText = async (payment: WeeklyPayment): Promise<strin
   const workerSummary = payment.workers.map(w => {
     const daysWorked = Object.values(w.attendance).filter(Boolean).length;
     const advanceAmount = (w.hasAdvance && w.advanceDays) ? w.advanceDays * w.dailyRate : 0;
-    const total = (daysWorked * w.dailyRate) + advanceAmount;
+    const deductionAmount = (w.hasDeduction && w.deductionDays) ? w.deductionDays * w.dailyRate : 0;
+    const total = (daysWorked * w.dailyRate) + advanceAmount - deductionAmount;
     
-    if (daysWorked === 0 && advanceAmount === 0) return null;
+    if (daysWorked === 0 && advanceAmount === 0 && deductionAmount === 0) return null;
     
     let line = `-${w.name} (${w.role}): ${daysWorked} dias trabalhados`;
     if (advanceAmount > 0) {
       line += ` + ${w.advanceDays} diárias de adiantamento`;
+    }
+    if (deductionAmount > 0) {
+      line += ` - ${w.deductionDays} diárias de desconto de adiantamento`;
     }
     line += ` (Total R$ ${total.toFixed(2).replace('.', ',')})**`;
     
