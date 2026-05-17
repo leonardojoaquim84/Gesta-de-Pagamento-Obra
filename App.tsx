@@ -240,7 +240,7 @@ const App: React.FC = () => {
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Calculator className="w-6 h-6" />
-            <h1 className="text-xl font-bold tracking-tight">Obra do Acidio</h1>
+            <h1 className="text-xl font-bold tracking-tight">Gestão de Obra</h1>
           </div>
           <nav className="flex bg-yellow-600 rounded-lg p-1">
             <button 
