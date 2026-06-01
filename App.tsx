@@ -17,7 +17,8 @@ import {
   Plus,
   Minus,
   Download,
-  AlertCircle
+  AlertCircle,
+  Share2
 } from 'lucide-react';
 
 const INITIAL_WORKERS: Worker[] = [
@@ -61,7 +62,9 @@ const App: React.FC = () => {
   const [view, setView] = useState<'current' | 'history'>('current');
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showClipboardNotice, setShowClipboardNotice] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+  const [showClearAllConfirmation, setShowClearAllConfirmation] = useState<boolean>(false);
 
   const captureRef = useRef<HTMLDivElement>(null);
 
@@ -111,18 +114,18 @@ const App: React.FC = () => {
   const handleSaveWeek = () => {
     const total = calculateGrandTotal();
     if (total === 0) {
-      alert("Selecione os dias trabalhados antes de salvar.");
+      setToastMessage("Selecione os dias trabalhados antes de salvar!");
+      setTimeout(() => setToastMessage(''), 4000);
       return;
     }
 
     const today = new Date();
-    const lastMonday = new Date(today);
-    lastMonday.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+    const formattedDate = today.toLocaleDateString('pt-BR');
 
     const newPayment: WeeklyPayment = {
       id: Date.now().toString(),
-      startDate: lastMonday.toLocaleDateString('pt-BR'),
-      endDate: today.toLocaleDateString('pt-BR'),
+      startDate: formattedDate,
+      endDate: "",
       workers: JSON.parse(JSON.stringify(workers)),
       totalAmount: total
     };
@@ -136,22 +139,17 @@ const App: React.FC = () => {
       hasDeduction: false,
       deductionDays: 0
     })));
-    alert("Semana salva com sucesso!");
+    setToastMessage("Semana salva com sucesso!");
+    setTimeout(() => setToastMessage(''), 4000);
   };
 
   const handleDeleteHistory = (id: string) => {
     if (!id) return;
-    if (window.confirm("Deseja apagar este registro permanentemente?")) {
-      setHistory(prev => prev.filter(item => item.id !== id));
-      setSelectedHistoryId(null);
-    }
+    setDeleteConfirmationId(id);
   };
 
   const handleClearAllHistory = () => {
-    if (window.confirm("Deseja apagar TODO o histórico de pagamentos? Esta ação não pode ser desfeita.")) {
-      setHistory([]);
-      setSelectedHistoryId(null);
-    }
+    setShowClearAllConfirmation(true);
   };
 
   const handleGenerateReceipt = async (payment: WeeklyPayment) => {
@@ -159,74 +157,89 @@ const App: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      // 1. Gerar o texto do recibo via IA
-      const text = await generateReceiptText(payment);
-      
-      // 2. Capturar o "print" da tela do histórico (área do recibo)
-      let imageBlob: Blob | null = null;
-      if (captureRef.current) {
+      if (!captureRef.current) {
+        throw new Error("Elemento de captura não encontrado");
+      }
+
+      const element = captureRef.current;
+
+      // Capturar o "print" da tela do histórico (área do recibo) com alta resolução
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        allowTaint: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: document.documentElement.clientWidth,
+        windowHeight: document.documentElement.clientHeight
+      });
+
+      if (!canvas) {
+        throw new Error("Falha ao criar elemento de canvas.");
+      }
+
+      // Converter o canvas em um blob de imagem
+      const imageBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!imageBlob) {
+        throw new Error("Falha ao gerar o arquivo de imagem");
+      }
+
+      const filename = `demonstrativo_${payment.startDate.replace(/\//g, '-')}.png`;
+      const file = new File([imageBlob], filename, { type: 'image/png' });
+
+      // 1. Tentar compartilhamento nativo de arquivo (Excelente para iOS AirDrop, WhatsApp nativo, etc. no celular)
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
-          const canvas = await html2canvas(captureRef.current, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            logging: false
+          await navigator.share({
+            files: [file],
+            title: `Demonstrativo - Semanal (${payment.startDate})`,
+            text: payment.endDate ? `Fechamento de Obra de ${payment.startDate} a ${payment.endDate}` : `Fechamento de Obra - ${payment.startDate}`
           });
-          imageBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-        } catch (e) {
-          console.error("Erro ao capturar imagem:", e);
-        }
-      }
-
-      // 3. Download the image (for "Salvar")
-      if (imageBlob) {
-        const url = URL.createObjectURL(imageBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `demonstrativo_${payment.startDate.replace(/\//g, '-')}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }
-
-      const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
-
-      // 4. Tentar compartilhar imagem + texto via API nativa (funciona melhor em Mobile)
-      if (navigator.share && imageBlob) {
-        const file = new File([imageBlob], `recibo_${payment.startDate.replace(/\//g, '-')}.png`, { type: 'image/png' });
-        try {
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              title: 'Demonstrativo de Obra',
-              text: text,
-              files: [file]
-            });
+          setToastMessage("Compartilhado com sucesso!");
+          setTimeout(() => setToastMessage(''), 4000);
+          setIsProcessing(false);
+          return;
+        } catch (shareErr: any) {
+          console.warn("Compartilhamento nativo cancelado ou falhou:", shareErr);
+          if (shareErr.name === "AbortError") {
+            // Se o usuário cancelou o menu de compartilhar nativo, apenas finalizamos graciosamente
             setIsProcessing(false);
             return;
           }
-        } catch (shareErr) {
-          console.warn("Navegador recusou compartilhamento de arquivo, tentando fallback", shareErr);
         }
       }
 
-      // 5. Fallback: Copiar imagem para o clipboard e abrir WhatsApp com o texto
-      if (imageBlob && navigator.clipboard && navigator.clipboard.write) {
+      // 2. Fallback: Download tradicional da foto + Cópia para a Área de Transferência (Clipboard)
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Tenta copiar para o clipboard para facilitar o envio (Ctrl+V ou pressionar e segurar para colar)
+      if (navigator.clipboard && navigator.clipboard.write) {
         try {
-          const data = [new ClipboardItem({ 'image/png': imageBlob })];
-          await navigator.clipboard.write(data);
-          setShowClipboardNotice(true);
-          setTimeout(() => setShowClipboardNotice(false), 4000);
+          const item = new ClipboardItem({ 'image/png': imageBlob });
+          await navigator.clipboard.write([item]);
+          setToastMessage("Foto salva e copiada! Cole no WhatsApp.");
         } catch (clipErr) {
-          console.warn("Erro ao copiar para clipboard:", clipErr);
+          console.warn("A área de transferência não aceita imagens neste navegador.", clipErr);
+          setToastMessage("Demonstrativo salvo com sucesso!");
         }
+      } else {
+        setToastMessage("Demonstrativo salvo com sucesso!");
       }
 
-      window.open(waUrl, '_blank');
+      setTimeout(() => setToastMessage(''), 4000);
 
     } catch (error) {
-      console.error("Erro geral no envio:", error);
-      alert("Ocorreu um erro ao preparar o envio.");
+      console.error("Erro ao gerar ou salvar demonstrativo:", error);
+      setToastMessage("Erro ao gerar a imagem do demonstrativo!");
+      setTimeout(() => setToastMessage(''), 4000);
     } finally {
       setIsProcessing(false);
     }
@@ -259,10 +272,10 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {showClipboardNotice && (
+      {toastMessage && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-2 rounded-full shadow-2xl flex items-center gap-2 border border-yellow-500 animate-in fade-in zoom-in duration-300">
-          <Copy className="w-4 h-4 text-yellow-500" />
-          <span className="text-xs font-bold uppercase tracking-tight">Print copiado! Cole no WhatsApp</span>
+          <Download className="w-4 h-4 text-yellow-500 animate-bounce" />
+          <span className="text-xs font-bold uppercase tracking-tight">{toastMessage}</span>
         </div>
       )}
 
@@ -431,7 +444,9 @@ const App: React.FC = () => {
                             {item.startDate.split('/')[0]}
                           </div>
                           <div>
-                            <p className="font-bold text-sm text-slate-800">{item.startDate} — {item.endDate}</p>
+                            <p className="font-bold text-sm text-slate-800">
+                              {item.endDate ? `${item.startDate} — ${item.endDate}` : item.startDate}
+                            </p>
                             <p className="text-[10px] text-slate-400 font-medium">Toque para detalhes e recibo</p>
                           </div>
                         </div>
@@ -455,7 +470,9 @@ const App: React.FC = () => {
                     <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
                       <div>
                         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Recibo de Pagamento</h2>
-                        <p className="text-xs font-bold text-slate-400">{selectedPayment?.startDate} até {selectedPayment?.endDate}</p>
+                        <p className="text-xs font-bold text-slate-400">
+                          {selectedPayment?.endDate ? `${selectedPayment?.startDate} até ${selectedPayment?.endDate}` : selectedPayment?.startDate}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Valor Total</p>
@@ -538,8 +555,8 @@ const App: React.FC = () => {
                         </div>
                       ) : (
                         <>
-                          <Download className="w-5 h-5" />
-                          SALVAR DEMONSTRATIVO
+                          <Share2 className="w-5 h-5" />
+                          SALVAR / COMPARTILHAR
                         </>
                       )}
                     </button>
@@ -561,6 +578,72 @@ const App: React.FC = () => {
       <footer className="mt-12 text-center pb-8 opacity-40">
         <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Leonardo • Gestão de Obra</p>
       </footer>
+
+      {/* Modal de Confirmação para Deletar Item Individual */}
+      {deleteConfirmationId && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-600 mb-4 mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-black text-slate-900 text-center uppercase tracking-tight">Apagar Registro</h3>
+            <p className="text-slate-500 text-xs text-center mt-2">Deseja apagar este registro de pagamento permanentemente? Esta ação não pode ser desfeita.</p>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setDeleteConfirmationId(null)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setHistory(prev => prev.filter(item => item.id !== deleteConfirmationId));
+                  setSelectedHistoryId(null);
+                  setDeleteConfirmationId(null);
+                  setToastMessage("Registro excluído!");
+                  setTimeout(() => setToastMessage(''), 3000);
+                }}
+                className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-xl shadow-lg shadow-red-600/10 active:scale-95 transition-all"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Limpar Todo o Histórico */}
+      {showClearAllConfirmation && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-600 mb-4 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-black text-slate-900 text-center uppercase tracking-tight">Limpar Histórico</h3>
+            <p className="text-slate-500 text-xs text-center mt-2">Deseja apagar TODO o histórico de pagamentos? Esta ação é irreversível e apagará tudo.</p>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowClearAllConfirmation(false)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setHistory([]);
+                  setSelectedHistoryId(null);
+                  setShowClearAllConfirmation(false);
+                  setToastMessage("Histórico apagado!");
+                  setTimeout(() => setToastMessage(''), 3000);
+                }}
+                className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-xl shadow-lg shadow-red-600/10 active:scale-95 transition-all"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
