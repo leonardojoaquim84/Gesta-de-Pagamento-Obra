@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Worker, WorkerType, WeeklyPayment, DAYS_OF_WEEK, Attendance } from './types';
+import { Worker, WorkerType, WeeklyPayment, DAYS_OF_WEEK, Attendance, MaterialItem } from './types';
 import { generateReceiptText } from './services/geminiService';
 import html2canvas from 'html2canvas';
 import { 
@@ -59,12 +59,18 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [view, setView] = useState<'current' | 'history'>('current');
+  const [view, setView] = useState<'current' | 'history' | 'material'>('current');
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string>('');
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [showClearAllConfirmation, setShowClearAllConfirmation] = useState<boolean>(false);
+  const [materials, setMaterials] = useState<MaterialItem[]>(() => {
+    const saved = localStorage.getItem('materials_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [newMaterialName, setNewMaterialName] = useState('');
+  const [newMaterialQty, setNewMaterialQty] = useState('');
 
   const captureRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +81,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('payment_history', JSON.stringify(history));
   }, [history]);
+
+  useEffect(() => {
+    localStorage.setItem('materials_list', JSON.stringify(materials));
+  }, [materials]);
 
   const toggleAttendance = (workerId: string, day: keyof Attendance) => {
     setWorkers(prev => prev.map(w => 
@@ -150,6 +160,39 @@ const App: React.FC = () => {
 
   const handleClearAllHistory = () => {
     setShowClearAllConfirmation(true);
+  };
+
+  const handleAddMaterial = (e: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newMaterialName.trim()) return;
+
+    const newItem: MaterialItem = {
+      id: Date.now().toString(),
+      name: newMaterialName.trim(),
+      quantity: newMaterialQty.trim() || '1',
+      checked: false,
+      createdAt: Date.now()
+    };
+
+    setMaterials(prev => [newItem, ...prev]);
+    setNewMaterialName('');
+    setNewMaterialQty('');
+  };
+
+  const handleToggleMaterial = (id: string) => {
+    setMaterials(prev => prev.map(m => 
+      m.id === id ? { ...m, checked: !m.checked } : m
+    ));
+  };
+
+  const handleDeleteMaterial = (id: string) => {
+    setMaterials(prev => prev.filter(m => m.id !== id));
+  };
+
+  const handleClearAllMaterials = () => {
+    setMaterials([]);
+    setToastMessage("Lista de materiais limpa!");
+    setTimeout(() => setToastMessage(''), 3000);
   };
 
   const handleGenerateReceipt = async (payment: WeeklyPayment) => {
@@ -258,15 +301,21 @@ const App: React.FC = () => {
           <nav className="flex bg-yellow-600 rounded-lg p-1">
             <button 
               onClick={() => { setView('current'); setSelectedHistoryId(null); }}
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${view === 'current' ? 'bg-yellow-400 font-bold shadow-sm' : 'text-yellow-100'}`}
+              className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-md transition-all ${view === 'current' ? 'bg-yellow-400 font-bold text-slate-900 shadow-sm' : 'text-yellow-100'}`}
             >
               Semana
             </button>
             <button 
               onClick={() => setView('history')}
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${view === 'history' ? 'bg-yellow-400 font-bold shadow-sm' : 'text-yellow-100'}`}
+              className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-md transition-all ${view === 'history' ? 'bg-yellow-400 font-bold text-slate-900 shadow-sm' : 'text-yellow-100'}`}
             >
               Histórico
+            </button>
+            <button 
+              onClick={() => { setView('material'); setSelectedHistoryId(null); }}
+              className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-md transition-all ${view === 'material' ? 'bg-yellow-400 font-bold text-slate-900 shadow-sm' : 'text-yellow-100'}`}
+            >
+              Material
             </button>
           </nav>
         </div>
@@ -407,7 +456,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-        ) : (
+        ) : view === 'history' ? (
           <div className="space-y-4">
             {!selectedHistoryId ? (
               <>
@@ -569,6 +618,115 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="flex justify-between items-center mb-2">
+              <div>
+                <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest">Lista de Materiais</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Para comprar na loja posteriormente</p>
+              </div>
+              {materials.length > 0 && (
+                <button 
+                  type="button"
+                  onClick={handleClearAllMaterials}
+                  className="text-red-500 text-[10px] font-black uppercase flex items-center gap-1 hover:text-red-700 transition-colors py-2 px-3 bg-red-50/50 rounded-lg border border-red-100"
+                >
+                  <Trash2 className="w-3 h-3" /> Limpar Lista
+                </button>
+              )}
+            </div>
+
+            {/* Form de Inserção Rápida */}
+            <form onSubmit={handleAddMaterial} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nome do Material</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Ex: Cimento, Areia, Tijolo, Torneira..."
+                  value={newMaterialName}
+                  onChange={(e) => setNewMaterialName(e.target.value)}
+                  className="w-full h-11 px-3.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-yellow-400 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+                />
+              </div>
+              <div className="w-full sm:w-44">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Quantidade / Medida</label>
+                <input 
+                  type="text"
+                  placeholder="Ex: 5 sacos, 2m³, 20m..."
+                  value={newMaterialQty}
+                  onChange={(e) => setNewMaterialQty(e.target.value)}
+                  className="w-full h-11 px-3.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-yellow-400 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+                />
+              </div>
+              <button 
+                type="submit"
+                className="h-11 sm:mt-5 bg-yellow-500 hover:bg-yellow-400 text-slate-900 px-6 rounded-xl font-black text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <Plus className="w-5 h-5" /> Adicionar
+              </button>
+            </form>
+
+            {/* Lista de Itens */}
+            {materials.length === 0 ? (
+              <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-slate-200">
+                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CheckSquare className="w-6 h-6 text-slate-300" />
+                </div>
+                <p className="text-slate-800 text-sm font-bold">Sua lista está vazia</p>
+                <p className="text-slate-400 text-xs mt-1">Adicione materiais e as quantidades que precisa comprar posteriormente.</p>
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {materials.map(item => (
+                  <div 
+                    key={item.id}
+                    className={`bg-white rounded-xl border p-4 flex justify-between items-center transition-all shadow-sm ${
+                      item.checked 
+                        ? 'border-slate-100 bg-slate-50/50 opacity-70' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleMaterial(item.id)}>
+                      <div className="flex-shrink-0">
+                        {item.checked ? (
+                          <div className="w-6 h-6 bg-yellow-500 rounded-lg flex items-center justify-center text-slate-900 border border-yellow-600 shadow-sm">
+                            <span className="text-xs font-bold">✓</span>
+                          </div>
+                        ) : (
+                          <div className="w-6 h-6 bg-white border-2 border-slate-200 rounded-lg" />
+                        )}
+                      </div>
+                      
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm font-bold text-slate-800 truncate ${item.checked ? 'line-through text-slate-400 italic' : ''}`}>
+                          {item.name}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">Cadastrado em {new Date(item.createdAt).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 ml-2">
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-black shrink-0 ${
+                        item.checked 
+                          ? 'bg-slate-100 text-slate-400 line-through' 
+                          : 'bg-yellow-100 text-yellow-850'
+                      }`}>
+                        {item.quantity}
+                      </span>
+                      <button 
+                        onClick={() => handleDeleteMaterial(item.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 rounded-lg bg-slate-50/50 hover:bg-red-50 border border-slate-100/50 hover:border-red-100/50 transition-colors"
+                        title="Apagar item"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

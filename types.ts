@@ -33,6 +33,14 @@ export interface WeeklyPayment {
   totalAmount: number;
 }
 
+export interface MaterialItem {
+  id: string;
+  name: string;
+  quantity: string;
+  checked: boolean;
+  createdAt: number;
+}
+
 export const DAYS_OF_WEEK = [
   { key: 'monday', label: 'Seg' },
   { key: 'tuesday', label: 'Ter' },
