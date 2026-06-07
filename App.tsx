@@ -73,6 +73,7 @@ const App: React.FC = () => {
   const [newMaterialQty, setNewMaterialQty] = useState('');
 
   const captureRef = useRef<HTMLDivElement>(null);
+  const materialsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem('current_week_workers', JSON.stringify(workers));
@@ -282,6 +283,102 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Erro ao gerar ou salvar demonstrativo:", error);
       setToastMessage("Erro ao gerar a imagem do demonstrativo!");
+      setTimeout(() => setToastMessage(''), 4000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleShareMaterials = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      if (!materialsRef.current) {
+        throw new Error("Elemento de captura não encontrado");
+      }
+
+      const element = materialsRef.current;
+
+      // Capturar o "print" da lista de materiais com alta resolução
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        allowTaint: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: document.documentElement.clientWidth,
+        windowHeight: document.documentElement.clientHeight
+      });
+
+      if (!canvas) {
+        throw new Error("Falha ao criar elemento de canvas.");
+      }
+
+      // Converter o canvas em um blob de imagem
+      const imageBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!imageBlob) {
+        throw new Error("Falha ao gerar o arquivo de imagem");
+      }
+
+      const filename = `lista_materiais_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.png`;
+      const file = new File([imageBlob], filename, { type: 'image/png' });
+
+      // Texto de fallback para caso queiram colar em formato de lista simples também
+      const textList = materials.map(m => `${m.checked ? '✓' : '☐'} ${m.name} (${m.quantity})`).join('\n');
+      const shareText = `Lista de Materiais de ${new Date().toLocaleDateString('pt-BR')}:\n\n${textList}`;
+
+      // 1. Tentar compartilhamento nativo de arquivo (Excelente para iOS AirDrop, WhatsApp nativo, etc. no celular)
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `Lista de Materiais - ${new Date().toLocaleDateString('pt-BR')}`,
+            text: shareText
+          });
+          setToastMessage("Lista compartilhada com sucesso!");
+          setTimeout(() => setToastMessage(''), 4000);
+          setIsProcessing(false);
+          return;
+        } catch (shareErr: any) {
+          console.warn("Compartilhamento nativo cancelado ou falhou:", shareErr);
+          if (shareErr.name === "AbortError") {
+            setIsProcessing(false);
+            return;
+          }
+        }
+      }
+
+      // 2. Fallback: Download tradicional da foto + Cópia para a Área de Transferência (Clipboard)
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Tenta copiar para o clipboard para facilitar o envio (Ctrl+V ou pressionar e segurar para colar)
+      if (navigator.clipboard && navigator.clipboard.write) {
+        try {
+          const item = new ClipboardItem({ 'image/png': imageBlob });
+          await navigator.clipboard.write([item]);
+          setToastMessage("Foto salva e copiada! Cole no WhatsApp.");
+        } catch (clipErr) {
+          console.warn("A área de transferência não aceita imagens neste navegador.", clipErr);
+          setToastMessage("Lista salva com sucesso!");
+        }
+      } else {
+        setToastMessage("Lista salva com sucesso!");
+      }
+
+      setTimeout(() => setToastMessage(''), 4000);
+
+    } catch (error) {
+      console.error("Erro ao gerar ou salvar lista de materiais:", error);
+      setToastMessage("Erro ao gerar a imagem da lista!");
       setTimeout(() => setToastMessage(''), 4000);
     } finally {
       setIsProcessing(false);
@@ -680,53 +777,89 @@ const App: React.FC = () => {
                 <p className="text-slate-400 text-xs mt-1">Adicione materiais e as quantidades que precisa comprar posteriormente.</p>
               </div>
             ) : (
-              <div className="grid gap-2">
-                {materials.map(item => (
-                  <div 
-                    key={item.id}
-                    className={`bg-white rounded-xl border p-4 flex justify-between items-center transition-all shadow-sm ${
-                      item.checked 
-                        ? 'border-slate-100 bg-slate-50/50 opacity-70' 
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleMaterial(item.id)}>
-                      <div className="flex-shrink-0">
-                        {item.checked ? (
-                          <div className="w-6 h-6 bg-yellow-500 rounded-lg flex items-center justify-center text-slate-900 border border-yellow-600 shadow-sm">
-                            <span className="text-xs font-bold">✓</span>
-                          </div>
-                        ) : (
-                          <div className="w-6 h-6 bg-white border-2 border-slate-200 rounded-lg" />
-                        )}
-                      </div>
-                      
-                      <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-bold text-slate-800 truncate ${item.checked ? 'line-through text-slate-400 italic' : ''}`}>
-                          {item.name}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-medium">Cadastrado em {new Date(item.createdAt).toLocaleDateString()}</p>
-                      </div>
+              <div className="space-y-4">
+                <div ref={materialsRef} className="bg-white rounded-2xl border-2 border-yellow-400 shadow-2xl p-6">
+                  {/* Cabeçalho do Print */}
+                  <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
+                    <div>
+                      <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Lista de Materiais</h2>
+                      <p className="text-xs font-bold text-slate-400">Materiais para compra</p>
                     </div>
-
-                    <div className="flex items-center gap-3 ml-2">
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-black shrink-0 ${
-                        item.checked 
-                          ? 'bg-slate-100 text-slate-400 line-through' 
-                          : 'bg-yellow-100 text-yellow-850'
-                      }`}>
-                        {item.quantity}
-                      </span>
-                      <button 
-                        onClick={() => handleDeleteMaterial(item.id)}
-                        className="p-2 text-slate-400 hover:text-red-500 rounded-lg bg-slate-50/50 hover:bg-red-50 border border-slate-100/50 hover:border-red-100/50 transition-colors"
-                        title="Apagar item"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Data de Emissão</p>
+                      <p className="text-sm font-black text-yellow-600">{new Date().toLocaleDateString('pt-BR')}</p>
                     </div>
                   </div>
-                ))}
+
+                  <div className="grid gap-2">
+                    {materials.map(item => (
+                      <div 
+                        key={item.id}
+                        className={`bg-white rounded-xl border p-4 flex justify-between items-center transition-all shadow-sm ${
+                          item.checked 
+                            ? 'border-slate-100 bg-slate-50/50 opacity-70' 
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleMaterial(item.id)}>
+                          <div className="flex-shrink-0">
+                            {item.checked ? (
+                              <div className="w-6 h-6 bg-yellow-500 rounded-lg flex items-center justify-center text-slate-900 border border-yellow-600 shadow-sm">
+                                <span className="text-xs font-bold">✓</span>
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 bg-white border-2 border-slate-200 rounded-lg" />
+                            )}
+                          </div>
+                          
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-sm font-bold text-slate-800 truncate ${item.checked ? 'line-through text-slate-400 italic' : ''}`}>
+                              {item.name}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-medium">Cadastrado em {new Date(item.createdAt).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 ml-2">
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-black shrink-0 ${
+                            item.checked 
+                              ? 'bg-slate-100 text-slate-400 line-through' 
+                              : 'bg-yellow-100 text-yellow-850'
+                          }`}>
+                            {item.quantity}
+                          </span>
+                          <button 
+                            data-html2canvas-ignore="true"
+                            onClick={() => handleDeleteMaterial(item.id)}
+                            className="p-2 text-slate-400 hover:text-red-500 rounded-lg bg-slate-50/50 hover:bg-red-50 border border-slate-100/50 hover:border-red-100/50 transition-colors"
+                            title="Apagar item"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Botão de salvar/enviar */}
+                <button 
+                  onClick={handleShareMaterials}
+                  disabled={isProcessing}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black text-sm shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                >
+                  {isProcessing ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>PROCESSANDO...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Share2 className="w-5 h-5" />
+                      SALVAR / COMPARTILHAR LISTA
+                    </>
+                  )}
+                </button>
               </div>
             )}
           </div>
