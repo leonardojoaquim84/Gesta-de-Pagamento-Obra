@@ -95,26 +95,40 @@ const App: React.FC = () => {
     ));
   };
 
-  const updateAdvance = (workerId: string, hasAdvance: boolean, days?: number) => {
+  const updateAdvance = (workerId: string, hasAdvance: boolean, days?: number, customValue?: number) => {
     setWorkers(prev => prev.map(w => 
       w.id === workerId 
-        ? { ...w, hasAdvance, advanceDays: days !== undefined ? days : w.advanceDays || 0 }
+        ? { 
+            ...w, 
+            hasAdvance, 
+            advanceDays: days !== undefined ? days : w.advanceDays || 0,
+            customAdvanceValue: customValue !== undefined ? customValue : w.customAdvanceValue || 0
+          }
         : w
     ));
   };
 
-  const updateDeduction = (workerId: string, hasDeduction: boolean, days?: number) => {
+  const updateDeduction = (workerId: string, hasDeduction: boolean, days?: number, customValue?: number) => {
     setWorkers(prev => prev.map(w => 
       w.id === workerId 
-        ? { ...w, hasDeduction, deductionDays: days !== undefined ? days : w.deductionDays || 0 }
+        ? { 
+            ...w, 
+            hasDeduction, 
+            deductionDays: days !== undefined ? days : w.deductionDays || 0,
+            customDeductionValue: customValue !== undefined ? customValue : w.customDeductionValue || 0
+          }
         : w
     ));
   };
 
   const calculateWorkerTotal = (worker: Worker) => {
     const daysWorked = Object.values(worker.attendance).filter(Boolean).length;
-    const advanceAmount = (worker.hasAdvance && worker.advanceDays) ? worker.advanceDays * worker.dailyRate : 0;
-    const deductionAmount = (worker.hasDeduction && worker.deductionDays) ? worker.deductionDays * worker.dailyRate : 0;
+    const advanceAmount = worker.hasAdvance 
+      ? ((worker.advanceDays || 0) * worker.dailyRate) + (worker.customAdvanceValue || 0)
+      : 0;
+    const deductionAmount = worker.hasDeduction 
+      ? ((worker.deductionDays || 0) * worker.dailyRate) + (worker.customDeductionValue || 0)
+      : 0;
     return (daysWorked * worker.dailyRate) + advanceAmount - deductionAmount;
   };
 
@@ -467,67 +481,103 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="px-3 pb-3 pt-1 border-t border-slate-50 bg-slate-50/30 space-y-2">
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          checked={worker.hasAdvance || false}
-                          onChange={(e) => updateAdvance(worker.id, e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-300 text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                        />
-                        <span className="text-[10px] font-bold uppercase text-slate-500 group-hover:text-slate-700 transition-colors">Adiantamento?</span>
-                      </label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            checked={worker.hasAdvance || false}
+                            onChange={(e) => updateAdvance(worker.id, e.target.checked)}
+                            className="w-4 h-4 rounded border-slate-300 text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                          />
+                          <span className="text-[10px] font-bold uppercase text-slate-500 group-hover:text-slate-700 transition-colors">Adiantamento?</span>
+                        </label>
+                      </div>
                       
                       {worker.hasAdvance && (
-                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Dias:</span>
-                          <div className="relative flex items-center">
-                            <select 
-                              value={worker.advanceDays || 0}
-                              onChange={(e) => updateAdvance(worker.id, true, parseFloat(e.target.value) || 0)}
-                              className="appearance-none w-14 h-8 px-2 text-center text-xs font-black bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-yellow-400 cursor-pointer shadow-sm"
-                            >
-                              {Array.from({ length: 8 }, (_, i) => i).map(val => (
-                                <option key={val} value={val}>{val}</option>
-                              ))}
-                            </select>
-                            <ChevronRight className="w-3 h-3 text-slate-400 absolute right-1 pointer-events-none rotate-90" />
+                        <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-100 p-2 rounded-xl animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Dias:</span>
+                            <div className="relative flex items-center">
+                              <select 
+                                value={worker.advanceDays || 0}
+                                onChange={(e) => updateAdvance(worker.id, true, parseFloat(e.target.value) || 0, worker.customAdvanceValue)}
+                                className="appearance-none w-14 h-8 px-2 text-center text-xs font-black bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-yellow-400 cursor-pointer shadow-sm"
+                              >
+                                {Array.from({ length: 8 }, (_, i) => i).map(val => (
+                                  <option key={val} value={val}>{val}</option>
+                                ))}
+                              </select>
+                              <ChevronRight className="w-3 h-3 text-slate-400 absolute right-1 pointer-events-none rotate-90" />
+                            </div>
                           </div>
-                          <span className="text-[10px] font-black text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded">
-                            + R$ {((worker.advanceDays || 0) * worker.dailyRate).toFixed(2)}
+
+                          <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Valor Livre R$:</span>
+                            <input 
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="0,00"
+                              value={worker.customAdvanceValue || ''}
+                              onChange={(e) => updateAdvance(worker.id, true, worker.advanceDays, parseFloat(e.target.value) || 0)}
+                              className="w-full h-8 px-2 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-yellow-400 shadow-sm"
+                            />
+                          </div>
+
+                          <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded shrink-0 border border-green-100/50">
+                            + R$ {(((worker.advanceDays || 0) * worker.dailyRate) + (worker.customAdvanceValue || 0)).toFixed(2)}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-4 border-t border-slate-100/50 pt-2">
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          checked={worker.hasDeduction || false}
-                          onChange={(e) => updateDeduction(worker.id, e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-300 text-red-500 focus:ring-red-500 cursor-pointer"
-                        />
-                        <span className="text-[10px] font-bold uppercase text-slate-500 group-hover:text-slate-700 transition-colors">Desconto de Adiantamento?</span>
-                      </label>
+                    <div className="flex flex-col gap-2 border-t border-slate-100/50 pt-2">
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            checked={worker.hasDeduction || false}
+                            onChange={(e) => updateDeduction(worker.id, e.target.checked)}
+                            className="w-4 h-4 rounded border-slate-300 text-red-500 focus:ring-red-500 cursor-pointer"
+                          />
+                          <span className="text-[10px] font-bold uppercase text-slate-500 group-hover:text-slate-700 transition-colors">Desconto de Adiantamento?</span>
+                        </label>
+                      </div>
                       
                       {worker.hasDeduction && (
-                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Dias:</span>
-                          <div className="relative flex items-center">
-                            <select 
-                              value={worker.deductionDays || 0}
-                              onChange={(e) => updateDeduction(worker.id, true, parseFloat(e.target.value) || 0)}
-                              className="appearance-none w-14 h-8 px-2 text-center text-xs font-black bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-red-400 cursor-pointer shadow-sm"
-                            >
-                              {Array.from({ length: 8 }, (_, i) => i).map(val => (
-                                <option key={val} value={val}>{val}</option>
-                              ))}
-                            </select>
-                            <ChevronRight className="w-3 h-3 text-slate-400 absolute right-1 pointer-events-none rotate-90" />
+                        <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-100 p-2 rounded-xl animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Dias:</span>
+                            <div className="relative flex items-center">
+                              <select 
+                                value={worker.deductionDays || 0}
+                                onChange={(e) => updateDeduction(worker.id, true, parseFloat(e.target.value) || 0, worker.customDeductionValue)}
+                                className="appearance-none w-14 h-8 px-2 text-center text-xs font-black bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-red-400 cursor-pointer shadow-sm"
+                              >
+                                {Array.from({ length: 8 }, (_, i) => i).map(val => (
+                                  <option key={val} value={val}>{val}</option>
+                                ))}
+                              </select>
+                              <ChevronRight className="w-3 h-3 text-slate-400 absolute right-1 pointer-events-none rotate-90" />
+                            </div>
                           </div>
-                          <span className="text-[10px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded">
-                            - R$ {((worker.deductionDays || 0) * worker.dailyRate).toFixed(2)}
+
+                          <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Valor Livre R$:</span>
+                            <input 
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="0,00"
+                              value={worker.customDeductionValue || ''}
+                              onChange={(e) => updateDeduction(worker.id, true, worker.deductionDays, parseFloat(e.target.value) || 0)}
+                              className="w-full h-8 px-2 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-red-400 shadow-sm"
+                            />
+                          </div>
+
+                          <span className="text-[10px] font-black text-red-600 bg-red-50 px-2 py-1 rounded shrink-0 border border-red-100/50">
+                            - R$ {(((worker.deductionDays || 0) * worker.dailyRate) + (worker.customDeductionValue || 0)).toFixed(2)}
                           </span>
                         </div>
                       )}
@@ -630,8 +680,12 @@ const App: React.FC = () => {
                       {selectedPayment?.workers.map(worker => {
                         const days = Object.values(worker.attendance).filter(Boolean).length;
                         const baseAmount = days * worker.dailyRate;
-                        const advanceAmount = (worker.hasAdvance && worker.advanceDays) ? worker.advanceDays * worker.dailyRate : 0;
-                        const deductionAmount = (worker.hasDeduction && worker.deductionDays) ? worker.deductionDays * worker.dailyRate : 0;
+                        const advanceAmount = worker.hasAdvance 
+                          ? ((worker.advanceDays || 0) * worker.dailyRate) + (worker.customAdvanceValue || 0)
+                          : 0;
+                        const deductionAmount = worker.hasDeduction
+                          ? ((worker.deductionDays || 0) * worker.dailyRate) + (worker.customDeductionValue || 0)
+                          : 0;
                         const subtotal = baseAmount + advanceAmount - deductionAmount;
 
                         if (days === 0 && advanceAmount === 0 && deductionAmount === 0) return null;
@@ -656,14 +710,28 @@ const App: React.FC = () => {
                               
                               {advanceAmount > 0 && (
                                 <div className="flex justify-between text-[11px] font-bold text-green-600 bg-green-50/50 px-2 py-1 rounded">
-                                  <span className="uppercase tracking-tight">(+) Adiantamento ({worker.advanceDays}d)</span>
+                                  <span className="uppercase tracking-tight">
+                                    (+) Adiantamento 
+                                    {worker.advanceDays && worker.customAdvanceValue 
+                                      ? ` (${worker.advanceDays}d + R$ ${worker.customAdvanceValue})` 
+                                      : worker.advanceDays 
+                                        ? ` (${worker.advanceDays}d)` 
+                                        : ` (R$ ${worker.customAdvanceValue})`}
+                                  </span>
                                   <span>R$ {advanceAmount.toFixed(2).replace('.', ',')}</span>
                                 </div>
                               )}
 
                               {deductionAmount > 0 && (
                                 <div className="flex justify-between text-[11px] font-bold text-red-600 bg-red-50/50 px-2 py-1 rounded">
-                                  <span className="uppercase tracking-tight">(-) Desc. Adiantamento ({worker.deductionDays}d)</span>
+                                  <span className="uppercase tracking-tight">
+                                    (-) Desc. Adiantamento 
+                                    {worker.deductionDays && worker.customDeductionValue 
+                                      ? ` (${worker.deductionDays}d + R$ ${worker.customDeductionValue})` 
+                                      : worker.deductionDays 
+                                        ? ` (${worker.deductionDays}d)` 
+                                        : ` (R$ ${worker.customDeductionValue})`}
+                                  </span>
                                   <span>R$ {deductionAmount.toFixed(2).replace('.', ',')}</span>
                                 </div>
                               )}
@@ -816,7 +884,6 @@ const App: React.FC = () => {
                             <p className={`text-sm font-bold text-slate-800 truncate ${item.checked ? 'line-through text-slate-400 italic' : ''}`}>
                               {item.name}
                             </p>
-                            <p className="text-[10px] text-slate-400 font-medium">Cadastrado em {new Date(item.createdAt).toLocaleDateString()}</p>
                           </div>
                         </div>
 
@@ -868,6 +935,7 @@ const App: React.FC = () => {
 
       <footer className="mt-12 text-center pb-8 opacity-40">
         <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Leonardo • Gestão de Obra</p>
+        <p className="text-[9px] text-slate-400 font-medium mt-1">Última atualização: 09/07/2026 às 22:07</p>
       </footer>
 
       {/* Modal de Confirmação para Deletar Item Individual */}

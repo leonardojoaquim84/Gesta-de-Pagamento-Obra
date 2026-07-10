@@ -21,8 +21,10 @@ export interface Worker {
   attendance: Attendance;
   hasAdvance?: boolean;
   advanceDays?: number;
+  customAdvanceValue?: number;
   hasDeduction?: boolean;
   deductionDays?: number;
+  customDeductionValue?: number;
 }
 
 export interface WeeklyPayment {
