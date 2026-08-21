@@ -18,7 +18,10 @@ import {
   Minus,
   Download,
   AlertCircle,
-  Share2
+  Share2,
+  Pencil,
+  Check,
+  X
 } from 'lucide-react';
 
 const INITIAL_WORKERS: Worker[] = [
@@ -71,6 +74,9 @@ const App: React.FC = () => {
   });
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialQty, setNewMaterialQty] = useState('');
+  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
+  const [editingMaterialName, setEditingMaterialName] = useState('');
+  const [editingMaterialQty, setEditingMaterialQty] = useState('');
 
   const captureRef = useRef<HTMLDivElement>(null);
   const materialsRef = useRef<HTMLDivElement>(null);
@@ -202,6 +208,33 @@ const App: React.FC = () => {
 
   const handleDeleteMaterial = (id: string) => {
     setMaterials(prev => prev.filter(m => m.id !== id));
+    if (editingMaterialId === id) {
+      setEditingMaterialId(null);
+    }
+  };
+
+  const handleStartEditMaterial = (item: MaterialItem) => {
+    setEditingMaterialId(item.id);
+    setEditingMaterialName(item.name);
+    setEditingMaterialQty(item.quantity);
+  };
+
+  const handleCancelEditMaterial = () => {
+    setEditingMaterialId(null);
+    setEditingMaterialName('');
+    setEditingMaterialQty('');
+  };
+
+  const handleSaveEditMaterial = (id: string) => {
+    if (!editingMaterialName.trim()) return;
+    setMaterials(prev => prev.map(m => 
+      m.id === id 
+        ? { ...m, name: editingMaterialName.trim(), quantity: editingMaterialQty.trim() || '1' } 
+        : m
+    ));
+    setEditingMaterialId(null);
+    setToastMessage("Material atualizado!");
+    setTimeout(() => setToastMessage(''), 2500);
   };
 
   const handleClearAllMaterials = () => {
@@ -308,13 +341,18 @@ const App: React.FC = () => {
     setIsProcessing(true);
 
     try {
+      if (editingMaterialId) {
+        setEditingMaterialId(null);
+        await new Promise((r) => setTimeout(r, 60));
+      }
+
       if (!materialsRef.current) {
         throw new Error("Elemento de captura não encontrado");
       }
 
       const element = materialsRef.current;
 
-      // Capturar o "print" da lista de materiais com alta resolução
+      // Capturar o "print" da lista de materiais com alta resolução e largura natural completa
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -322,9 +360,7 @@ const App: React.FC = () => {
         logging: false,
         allowTaint: false,
         scrollX: 0,
-        scrollY: 0,
-        windowWidth: document.documentElement.clientWidth,
-        windowHeight: document.documentElement.clientHeight
+        scrollY: 0
       });
 
       if (!canvas) {
@@ -341,7 +377,7 @@ const App: React.FC = () => {
       const file = new File([imageBlob], filename, { type: 'image/png' });
 
       // Texto de fallback para caso queiram colar em formato de lista simples também
-      const textList = materials.map(m => `${m.checked ? '✓' : '☐'} ${m.name} (${m.quantity})`).join('\n');
+      const textList = materials.map(m => `${m.checked ? '✓' : '☐'} ${m.name} - ${m.quantity}`).join('\n');
       const shareText = `Lista de Materiais de ${new Date().toLocaleDateString('pt-BR')}:\n\n${textList}`;
 
       // 1. Tentar compartilhamento nativo de arquivo (Excelente para iOS AirDrop, WhatsApp nativo, etc. no celular)
@@ -863,47 +899,113 @@ const App: React.FC = () => {
                     {materials.map(item => (
                       <div 
                         key={item.id}
-                        className={`bg-white rounded-xl border p-4 flex justify-between items-center transition-all shadow-sm ${
-                          item.checked 
-                            ? 'border-slate-100 bg-slate-50/50 opacity-70' 
-                            : 'border-slate-200 hover:border-slate-300'
+                        className={`bg-white rounded-xl border p-3.5 sm:p-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 transition-all shadow-sm ${
+                          editingMaterialId === item.id
+                            ? 'border-yellow-400 ring-2 ring-yellow-400/20 bg-yellow-50/10'
+                            : item.checked 
+                              ? 'border-slate-100 bg-slate-50/50 opacity-70' 
+                              : 'border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleMaterial(item.id)}>
-                          <div className="flex-shrink-0">
-                            {item.checked ? (
-                              <div className="w-6 h-6 bg-yellow-500 rounded-lg flex items-center justify-center text-slate-900 border border-yellow-600 shadow-sm">
-                                <span className="text-xs font-bold">✓</span>
+                        {editingMaterialId === item.id ? (
+                          <div className="flex-1 flex flex-col sm:flex-row gap-2 items-center w-full" data-html2canvas-ignore="true">
+                            <input 
+                              type="text"
+                              value={editingMaterialName}
+                              onChange={(e) => setEditingMaterialName(e.target.value)}
+                              placeholder="Nome do material"
+                              className="flex-1 w-full h-10 px-3 text-sm bg-white border border-yellow-400 rounded-lg focus:outline-none text-slate-800 font-bold shadow-sm"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEditMaterial(item.id);
+                                if (e.key === 'Escape') handleCancelEditMaterial();
+                              }}
+                            />
+                            <input 
+                              type="text"
+                              value={editingMaterialQty}
+                              onChange={(e) => setEditingMaterialQty(e.target.value)}
+                              placeholder="Qtd / Medida"
+                              className="w-full sm:w-32 h-10 px-3 text-sm bg-white border border-yellow-400 rounded-lg focus:outline-none text-slate-800 font-bold shadow-sm"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEditMaterial(item.id);
+                                if (e.key === 'Escape') handleCancelEditMaterial();
+                              }}
+                            />
+                            <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                              <button 
+                                type="button"
+                                onClick={() => handleSaveEditMaterial(item.id)}
+                                className="flex-1 sm:flex-initial px-3.5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-black flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                                title="Salvar alterações"
+                              >
+                                <Check className="w-4 h-4" />
+                                <span>Salvar</span>
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={handleCancelEditMaterial}
+                                className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                                title="Cancelar edição"
+                              >
+                                <X className="w-4 h-4" />
+                                <span>Cancelar</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleMaterial(item.id)}>
+                              <div className="flex-shrink-0 mt-0.5 sm:mt-0">
+                                {item.checked ? (
+                                  <div className="w-5 h-5 bg-yellow-500 rounded-lg flex items-center justify-center text-slate-900 border border-yellow-600 shadow-sm">
+                                    <span className="text-xs font-black">✓</span>
+                                  </div>
+                                ) : (
+                                  <div className="w-5 h-5 bg-white border-2 border-slate-200 rounded-lg" />
+                                )}
                               </div>
-                            ) : (
-                              <div className="w-6 h-6 bg-white border-2 border-slate-200 rounded-lg" />
-                            )}
-                          </div>
-                          
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-sm font-bold text-slate-800 truncate ${item.checked ? 'line-through text-slate-400 italic' : ''}`}>
-                              {item.name}
-                            </p>
-                          </div>
-                        </div>
+                              
+                              <div className="min-w-0 flex-1">
+                                <p className={`text-sm font-bold text-slate-800 break-words whitespace-normal leading-snug ${item.checked ? 'line-through text-slate-400 italic' : ''}`}>
+                                  {item.name}
+                                </p>
+                              </div>
+                            </div>
 
-                        <div className="flex items-center gap-3 ml-2">
-                          <span className={`px-2.5 py-1 rounded-lg text-xs font-black shrink-0 ${
-                            item.checked 
-                              ? 'bg-slate-100 text-slate-400 line-through' 
-                              : 'bg-yellow-100 text-yellow-850'
-                          }`}>
-                            {item.quantity}
-                          </span>
-                          <button 
-                            data-html2canvas-ignore="true"
-                            onClick={() => handleDeleteMaterial(item.id)}
-                            className="p-2 text-slate-400 hover:text-red-500 rounded-lg bg-slate-50/50 hover:bg-red-50 border border-slate-100/50 hover:border-red-100/50 transition-colors"
-                            title="Apagar item"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                            <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0">
+                              <span className={`px-2.5 py-1 rounded-lg text-xs font-black shrink-0 whitespace-nowrap ${
+                                item.checked 
+                                  ? 'bg-slate-100 text-slate-400 line-through' 
+                                  : 'bg-yellow-100 text-yellow-850'
+                              }`}>
+                                {item.quantity}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0" data-html2canvas-ignore="true">
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditMaterial(item);
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-yellow-600 rounded-lg bg-slate-50/50 hover:bg-yellow-50 border border-slate-100/50 hover:border-yellow-200 transition-colors"
+                                  title="Editar material"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteMaterial(item.id);
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-red-500 rounded-lg bg-slate-50/50 hover:bg-red-50 border border-slate-100/50 hover:border-red-100/50 transition-colors"
+                                  title="Apagar item"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
